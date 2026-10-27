@@ -204,10 +204,15 @@ const acts={
   if(!AI_URL)return alert("L'assistente AI non è ancora collegato.");
   const fatti=$("#fatti").value.trim();if(!fatti)return alert("Scrivi cosa è successo");
   const l=ok(await sb.from("leggi").select("testo").order("id",{ascending:false}).limit(1))[0];
-  const m=cache.moduli.find(x=>x.id===$("#aim").value);$("#out").value="Sto scrivendo…";
-  const r=await fetch(AI_URL,{method:"POST",headers:{"Content-Type":"application/json"},
-   body:JSON.stringify({leggi:l?.testo||"",modulo:m.testo,nomeModulo:m.nome,fatti,agente:me.nome_rp+" ("+me.grado+")"})});
-  const d=await r.json();$("#out").value=d.testo||d.errore||"Errore"}
+  const m=cache.moduli.find(x=>x.id===$("#aim").value);if(!m)return alert("Scegli un tipo di verbale");
+  const {data:{session}}=await sb.auth.getSession();if(!session)return showLogin("Sessione scaduta");
+  $("#out").value="Sto scrivendo…";
+  try{
+   const r=await fetch(AI_URL,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+session.access_token},
+    body:JSON.stringify({leggi:l?.testo||"",modulo:m.testo,nomeModulo:m.nome,fatti,agente:(me.nome_rp||me.nick)+(me.grado?" ("+me.grado+")":"")})});
+   const d=await r.json();$("#out").value=d.testo||d.errore||"Errore sconosciuto";
+  }catch(x){$("#out").value="Impossibile contattare l'assistente. Controlla AI_URL in config.js e riprova."}
+ }
 };
 async function start(){
  const {data:{session}}=await sb.auth.getSession();if(!session)return showLogin();
