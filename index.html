@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="it"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Polizia RP – Atlantis</title>
+<style>
+:root{--bg:#f4f6fa;--c:#fff;--t:#1b2333;--p:#1f4e9c;--pt:#fff;--b:#d5dbe6;--r:#b3261e}
+@media(prefers-color-scheme:dark){:root{--bg:#10151f;--c:#192131;--t:#e6eaf2;--p:#6ea0ff;--pt:#10151f;--b:#2b364a;--r:#ff8a80}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--t)}
+header{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:10px 14px;background:var(--c);border-bottom:1px solid var(--b)}
+header b{margin-right:auto}main{max-width:960px;margin:16px auto;padding:0 14px}
+button{background:var(--p);color:var(--pt);border:0;border-radius:6px;padding:7px 12px;cursor:pointer;font:inherit}
+button.g{background:transparent;color:var(--t);border:1px solid var(--b)}button.d{background:var(--r);color:#fff}
+input,textarea,select{width:100%;padding:7px;border:1px solid var(--b);border-radius:6px;background:var(--bg);color:var(--t);font:inherit}
+textarea{min-height:130px;resize:vertical}label{display:block;font-size:13px;margin:8px 0 2px;opacity:.8}
+.card{background:var(--c);border:1px solid var(--b);border-radius:10px;padding:14px;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center}.row input{flex:1;min-width:160px}
+.prof{display:flex;gap:18px;flex-wrap:wrap}.prof img{image-rendering:pixelated}.hl{color:var(--r)}
+.login{max-width:340px;margin:12vh auto}.mug{float:right;margin-left:10px;border-radius:6px;image-rendering:pixelated}
+pre{white-space:pre-wrap;margin:0;font:inherit}
+</style></head><body>
+<div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+/* ====== DA COMPILARE (Supabase > Project Settings > API) ====== */
+const SB_URL="hhuoappggesisxgsenpl";
+const SB_KEY="sb_publishable_LQKs8XSB5QebwPJEWwWlsA_fxv1OJ-Y";
+const AI_URL=""; // indirizzo del Worker AI (passo successivo)
+/* ================================================================ */
+const sb=supabase.createClient(SB_URL,SB_KEY);
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const skin=(n,t="avatar",s=100)=>`https://mc-heads.net/${t}/${encodeURIComponent(n||"Steve")}/${s}`;
+const fb=`onerror="this.onerror=null;this.src='https://mc-heads.net/avatar/Steve/100'"`;
+const fmt=d=>new Date(d).toLocaleString("it-IT");
+let me=null,cache={},main;
+
+function showLogin(msg=""){
+ $("#app").innerHTML=`<div class="card login"><h2>Accesso Polizia</h2><p class="hl">${esc(msg)}</p>
+ <label>Email</label><input id="em" type="email"><label>Password</label><input id="pw" type="password">
+ <p><button data-a="login">Entra</button></p></div>`;
+ $("#app").onclick=e=>{if(e.target.dataset.a==="login")acts.login()};
+ $("#pw").onkeydown=e=>{if(e.key==="Enter")acts.login()};
+}
+function showApp(){
+ const adm=me.ruolo==="admin";
+ $("#app").innerHTML=`<header><b>🚓 Polizia RP</b>
+ <button class="g" data-v="Profilo">Profilo</button><button class="g" data-v="Fedina">Fedina</button>
+ <button class="g" data-v="Verbali">Verbali</button><button class="g" data-v="Leggi">Leggi</button>
+ <button class="g" data-v="AI">Assistente AI</button>${adm?'<button class="g" data-v="Utenti">Utenti</button>':""}
+ <button data-a="logout">Esci</button></header><main></main>`;
+ main=$("main");
+ $("#app").onclick=async e=>{
+  const v=e.target.closest("[data-v]");if(v)return go(v.dataset.v);
+  const b=e.target.closest("[data-a]");if(!b)return;
+  try{await acts[b.dataset.a](b.dataset.id,b)}catch(x){alert("Errore: "+x.message)}
+ };
+ go("Profilo");
+}
+const views={Profilo:vProfilo,Fedina:vFedina,Verbali:vVerbali,Leggi:vLeggi,AI:vAI,Utenti:vUtenti};
+async function go(n){main.innerHTML="Caricamento…";try{await views[n]()}catch(x){main.innerHTML=`<p class="hl">Errore: ${esc(x.message)}</p>`}}
+const ok=r=>{if(r.error)throw new Error(r.error.message);return r.data};
+const field=(k,l,v="",ta=false,p="f")=>`<label>${l}</label>${ta?`<textarea data-${p}="${k}">${esc(v)}</textarea>`:`<input data-${p}="${k}" value="${esc(v)}">`}`;
+const vals=(sel,p="f")=>{const o={};document.querySelectorAll(`${sel} [data-${p}]`).forEach(i=>o[i.dataset[p]]=i.type==="checkbox"?i.checked:i.value.trim());return o};
+
+/* ---------- PROFILO ---------- */
+function vProfilo(){
+ main.innerHTML=`<div class="card prof"><img src="${skin(me.nick,"body",160)}" ${fb} alt="skin"><div>
+ <h2>Dati Personali</h2>
+ <p>🆔 <b>ID Utente#</b> ${esc(me.num)}</p><p>⛏️ <b>Nick Minecraft</b> ${esc(me.nick)||"—"}</p>
+ <p>📛 <b>Nome RP</b> ${esc(me.nome_rp)||"—"}</p><p>🎖️ <b>Grado</b> ${esc(me.grado)||"—"}</p>
+ <p>📋 <b>Qualifica</b> ${esc(me.qualifica)||"—"}</p>
+ <p>🔐 <b>Ruolo Sistema</b> ${me.ruolo==="admin"?"Amministratore":"Agente"} 👤</p></div></div>`;
+}
+
+/* ---------- FEDINA ---------- */
+async function vFedina(){
+ cache.schede=ok(await sb.from("schede").select("*").order("modificato_il",{ascending:false}));
+ main.innerHTML=`<div class="row"><input id="q" placeholder="Cerca nickname o nome RP"><button data-a="nuovaScheda">+ Nuova scheda</button></div>
+ <div id="form"></div><div id="lista" class="grid"></div>`;
+ $("#q").oninput=drawSchede;drawSchede();
+}
+function drawSchede(){
+ const q=$("#q").value.toLowerCase();
+ const l=cache.schede.filter(s=>(s.nick+" "+(s.nome_rp||"")).toLowerCase().includes(q));
+ $("#lista").innerHTML=l.map(s=>`<div class="card"><img class="mug" src="${skin(s.nick,"avatar",90)}" ${fb} alt="mugshot">
+ <h3>${esc(s.nick)}</h3><p><b>Nome RP:</b> ${esc(s.nome_rp)||"—"}<br><b>Telefono:</b> ${esc(s.telefono)||"—"}<br>
+ <b>Associazione:</b> ${esc(s.associazione)||"—"}</p><p><b>Arresti:</b><br><pre>${esc(s.arresti)||"—"}</pre></p>
+ <p><b>Note:</b><br><pre>${esc(s.note)||"—"}</pre></p><small>Aggiornata: ${fmt(s.modificato_il)}</small>
+ <p><button class="g" data-a="editScheda" data-id="${s.id}">Modifica</button> <button class="d" data-a="delScheda" data-id="${s.id}">Elimina</button></p></div>`).join("")||"<p>Nessuna scheda trovata.</p>";
+}
+function formScheda(s={}){
+ $("#form").innerHTML=`<div class="card"><h3>${s.id?"Modifica":"Nuova"} scheda</h3>
+ ${field("nick","Nickname Minecraft",s.nick)}${field("nome_rp","Nome RP",s.nome_rp)}${field("telefono","Numero di telefono",s.telefono)}
+ ${field("associazione","Associazione",s.associazione)}${field("arresti","Arresti",s.arresti,true)}${field("note","Note",s.note,true)}
+ <p><button data-a="salvaScheda" data-id="${s.id||""}">Salva</button> <button class="g" data-a="annulla">Annulla</button></p></div>`;
+ $("#form").scrollIntoView();
+}
+
+/* ---------- VERBALI ---------- */
+async function vVerbali(){
+ cache.moduli=ok(await sb.from("moduli").select("*").order("nome"));
+ const adm=me.ruolo==="admin";
+ main.innerHTML=`${adm?'<div class="row"><button data-a="nuovoModulo">+ Nuovo modulo</button></div>':""}<div id="form"></div>`+
+ cache.moduli.map(m=>`<div class="card"><h3>${esc(m.nome)}</h3><textarea id="t${m.id}">${esc(m.testo)}</textarea>
+ <p><button data-a="copia" data-id="${m.id}">Copia testo</button>
+ ${adm?`<button class="g" data-a="editModulo" data-id="${m.id}">Modifica modulo</button> <button class="d" data-a="delModulo" data-id="${m.id}">Elimina</button>`:""}</p></div>`).join("");
+}
+function formModulo(m={}){
+ $("#form").innerHTML=`<div class="card"><h3>${m.id?"Modifica":"Nuovo"} modulo</h3>${field("nome","Nome del verbale",m.nome)}
+ ${field("testo","Testo / modello",m.testo,true)}<p><button data-a="salvaModulo" data-id="${m.id||""}">Salva</button> <button class="g" data-a="annulla">Annulla</button></p></div>`;
+ $("#form").scrollIntoView();
+}
+
+/* ---------- LEGGI ---------- */
+async function vLeggi(){
+ const h=ok(await sb.from("leggi").select("*").order("id",{ascending:false}).limit(20));
+ cache.leggi=h;const adm=me.ruolo==="admin";
+ main.innerHTML=`<div class="card"><h3>Leggi Fondamentali</h3>
+ <small>${h[0]?"Ultimo aggiornamento: "+fmt(h[0].creato_il):"Nessun testo salvato"}</small>
+ ${adm?`<textarea id="leggi" style="min-height:360px">${esc(h[0]?.testo)}</textarea>
+ <p><button data-a="salvaLeggi">Salva nuova versione</button></p>
+ <label>Versioni precedenti (si caricano nella casella, poi premi Salva per renderle attive)</label>
+ <select id="vers">${h.map((x,i)=>`<option value="${i}">${fmt(x.creato_il)}</option>`).join("")}</select>
+ <p><button class="g" data-a="caricaVers">Carica versione</button></p>`:`<pre>${esc(h[0]?.testo)}</pre>`}</div>`;
+}
+
+/* ---------- AI ---------- */
+async function vAI(){
+ cache.moduli=ok(await sb.from("moduli").select("*").order("nome"));
+ main.innerHTML=`<div class="card"><h3>Assistente AI per i verbali</h3>
+ ${AI_URL?"":'<p class="hl">L\'assistente non è ancora collegato (manca AI_URL).</p>'}
+ <label>Tipo di verbale</label><select id="aim">${cache.moduli.map(m=>`<option value="${m.id}">${esc(m.nome)}</option>`).join("")}</select>
+ <label>Racconta cosa è successo (anche in modo disordinato)</label><textarea id="fatti"></textarea>
+ <p><button data-a="genera">Genera verbale</button></p>
+ <label>Risultato (controllalo sempre prima di usarlo)</label><textarea id="out" style="min-height:260px"></textarea>
+ <p><button class="g" data-a="copiaOut">Copia</button></p></div>`;
+}
+
+/* ---------- UTENTI (admin) ---------- */
+async function vUtenti(){
+ if(me.ruolo!=="admin")return;
+ const u=ok(await sb.from("profiles").select("*").order("num"));
+ main.innerHTML=`<p>Per aggiungere un nuovo poliziotto crea prima il suo account in Supabase (Authentication → Users → Add user), poi compare qui.</p>`+
+ u.map(p=>`<div class="card" id="u${p.id}"><div class="row"><img src="${skin(p.nick,"avatar",48)}" ${fb} alt=""><b>ID #${p.num}</b></div>
+ ${field("nick","Nick Minecraft",p.nick,false,"u")}${field("nome_rp","Nome RP",p.nome_rp,false,"u")}
+ ${field("grado","Grado",p.grado,false,"u")}${field("qualifica","Qualifica",p.qualifica,false,"u")}
+ <label>Ruolo Sistema</label><select data-u="ruolo"><option value="agente" ${p.ruolo==="agente"?"selected":""}>Agente</option><option value="admin" ${p.ruolo==="admin"?"selected":""}>Amministratore</option></select>
+ <label><input type="checkbox" data-u="attivo" style="width:auto" ${p.attivo?"checked":""}> Account attivo</label>
+ <p><button data-a="salvaUtente" data-id="${p.id}">Salva</button></p></div>`).join("");
+}
+
+/* ---------- AZIONI ---------- */
+const acts={
+ async login(){const r=await sb.auth.signInWithPassword({email:$("#em").value.trim(),password:$("#pw").value});
+  if(r.error)return showLogin("Email o password non corrette");start()},
+ async logout(){await sb.auth.signOut();showLogin()},
+ annulla(){$("#form").innerHTML=""},
+ nuovaScheda(){formScheda()},
+ editScheda(id){formScheda(cache.schede.find(s=>s.id===id))},
+ async salvaScheda(id){const v=vals("#form");if(!v.nick)return alert("Inserisci il nickname");
+  v.modificato_il=new Date().toISOString();
+  ok(id?await sb.from("schede").update(v).eq("id",id):await sb.from("schede").insert(v));vFedina()},
+ async delScheda(id){if(!confirm("Eliminare definitivamente questa scheda?"))return;ok(await sb.from("schede").delete().eq("id",id));vFedina()},
+ copia(id){navigator.clipboard.writeText($("#t"+id).value).then(()=>alert("Copiato"))},
+ copiaOut(){navigator.clipboard.writeText($("#out").value).then(()=>alert("Copiato"))},
+ nuovoModulo(){formModulo()},
+ editModulo(id){formModulo(cache.moduli.find(m=>m.id===id))},
+ async salvaModulo(id){const v=vals("#form");if(!v.nome)return alert("Inserisci il nome");
+  ok(id?await sb.from("moduli").update(v).eq("id",id):await sb.from("moduli").insert(v));vVerbali()},
+ async delModulo(id){if(!confirm("Eliminare questo modulo?"))return;ok(await sb.from("moduli").delete().eq("id",id));vVerbali()},
+ async salvaLeggi(){const t=$("#leggi").value;if(!t.trim())return alert("Il testo è vuoto");
+  if(!confirm("Salvare come nuova versione delle leggi?"))return;ok(await sb.from("leggi").insert({testo:t}));vLeggi()},
+ caricaVers(){$("#leggi").value=cache.leggi[$("#vers").value].testo},
+ async salvaUtente(id){const v=vals("#u"+id,"u");ok(await sb.from("profiles").update(v).eq("id",id));alert("Salvato");
+  if(id===me.id)Object.assign(me,v)},
+ async genera(){
+  if(!AI_URL)return alert("L'assistente AI non è ancora collegato.");
+  const fatti=$("#fatti").value.trim();if(!fatti)return alert("Scrivi cosa è successo");
+  const l=ok(await sb.from("leggi").select("testo").order("id",{ascending:false}).limit(1))[0];
+  const m=cache.moduli.find(x=>x.id===$("#aim").value);$("#out").value="Sto scrivendo…";
+  const r=await fetch(AI_URL,{method:"POST",headers:{"Content-Type":"application/json"},
+   body:JSON.stringify({leggi:l?.testo||"",modulo:m.testo,nomeModulo:m.nome,fatti,agente:me.nome_rp+" ("+me.grado+")"})});
+  const d=await r.json();$("#out").value=d.testo||d.errore||"Errore"}
+};
+async function start(){
+ const {data:{session}}=await sb.auth.getSession();if(!session)return showLogin();
+ const r=await sb.from("profiles").select("*").eq("id",session.user.id).single();
+ if(r.error||!r.data)return showLogin("Profilo non trovato");
+ if(!r.data.attivo){await sb.auth.signOut();return showLogin("Account disattivato")}
+ me=r.data;showApp();
+}
+if(SB_URL.startsWith("INCOLLA"))$("#app").innerHTML='<div class="card login"><h3>Configurazione mancante</h3><p>Compila SB_URL e SB_KEY in index.html.</p></div>';
+else start();
+</script></body></html>
